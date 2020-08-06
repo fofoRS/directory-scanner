@@ -39,20 +39,22 @@ public class FileSystemKafkaProducer {
         producerConfig.setProperty(ProducerConfig.RETRIES_CONFIG, Integer.toString(Integer.MAX_VALUE));
         producerConfig.setProperty(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, "5"); // IF kafka >= 1.1
 
-//        producerConfig.setProperty(ProducerConfig.COMPRESSION_TYPE_CONFIG,"snappy");
-//        producerConfig.setProperty(ProducerConfig.LINGER_MS_CONFIG, Integer.toString(20));
+        producerConfig.setProperty(ProducerConfig.COMPRESSION_TYPE_CONFIG, "snappy");
+        producerConfig.setProperty(ProducerConfig.LINGER_MS_CONFIG, Integer.toString(20));
         kafkaProducer = new KafkaProducer<String, String>(producerConfig);
 
     }
 
 
     @ConsumeEvent(value ="file.system.events")
-    public void publishFileSystemChange(ArchiveMetaData archiveMetaData) throws JsonProcessingException {
-        logger.info("Preparing Message to send to kafka -- {}", archiveMetaData.getName());
-        ProducerRecord<String,String> record =
-                new ProducerRecord<>(SYSTEM_CHANGE_TOPIC, new ObjectMapper().writeValueAsString(archiveMetaData));
+    public void publishFileSystemChange(String fileName) {
+        logger.info("Preparing Message to send to kafka -- {}", fileName);
+        ProducerRecord<String,String> record = null;
+            record = new ProducerRecord<>(
+                    SYSTEM_CHANGE_TOPIC,
+                   fileName);
         kafkaProducer.send(record,(data,exception) -> {
-            logger.info("Message Sent to offset {}, for file {}", data.offset(),archiveMetaData.getName());
+            logger.info("Message Sent to offset {}, topic {}", data.offset(),data.topic());
         });
     }
 }

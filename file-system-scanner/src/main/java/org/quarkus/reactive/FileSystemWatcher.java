@@ -1,14 +1,7 @@
 package org.quarkus.reactive;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.runtime.Startup;
-import io.vertx.core.json.JsonObject;
 import io.vertx.mutiny.core.eventbus.EventBus;
-import org.apache.kafka.clients.producer.KafkaProducer;
-import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.common.serialization.StringSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,7 +15,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Properties;
 
 import static java.nio.file.StandardWatchEventKinds.*;
 
@@ -35,35 +27,16 @@ public class FileSystemWatcher {
     static final Map<WatchKey, Path> keys = new HashMap<>();
     static final String directory = "/Users/rodolfo/Documents/personal/training/learning/quarkus/quarkus-file-system-scanner/file-system-scanner/testDir";
     static final String FILE_SYSTEM_EVENT_ADDRESS = "file.system.events";
-    static final String SYSTEM_CHANGE_TOPIC = "file.system.watcher.topic";
 
     WatchService watcher;
-    Properties producerConfig;
-    KafkaProducer<String,String> kafkaProducer;
 
     @Inject
     EventBus eventBus;
 
     @PostConstruct
     public void init() throws IOException {
-        producerConfig = new Properties();
-        producerConfig.setProperty(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
-        producerConfig.setProperty(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-        producerConfig.setProperty(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-
-
-        // idempotence consumer (safe consumer)
-        producerConfig.setProperty(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, "true");
-        producerConfig.setProperty(ProducerConfig.ACKS_CONFIG, "all");
-        producerConfig.setProperty(ProducerConfig.RETRIES_CONFIG, Integer.toString(Integer.MAX_VALUE));
-        producerConfig.setProperty(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, "5"); // IF kafka >= 1.1
-
-//        producerConfig.setProperty(ProducerConfig.COMPRESSION_TYPE_CONFIG,"snappy");
-//        producerConfig.setProperty(ProducerConfig.LINGER_MS_CONFIG, Integer.toString(20));
-        kafkaProducer = new KafkaProducer<String, String>(producerConfig);
-
         watcher = FileSystems.getDefault().newWatchService();
-        initPathRegistration(Paths.get(directory));
+        registerPath(Paths.get(directory));
         watch();
     }
 
@@ -97,66 +70,35 @@ public class FileSystemWatcher {
         }
     }
 
-    private void processFileSystemEvent(Path currentDir,WatchEvent<Path> watchedEvent,  WatchEvent.Kind<Path> eventKind) {
+    private void processFileSystemEvent(Path currentDir,WatchEvent<Path> watchedEvent,
+                                        WatchEvent.Kind<Path> eventKind) {
         Path filePath = watchedEvent.context();
         Path child = currentDir.resolve(filePath);
-        if(watchedEvent.count() > 0) {
+        if(watchedEvent.count() > 1) {
             logger.info("Repeated Event --- skip archive processing");
             return;
         }
         System.out.format("Logging Event data  %s: %s\n", eventKind.name(), child);
-        publishFileSystemEvent(child);
+        publishFileSystemChange(child);
         registerPath(child);
-    }
-
-    private void initPathRegistration(Path path) {
-        try {
-            if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
-                Files.walkFileTree(path, new SimpleFileVisitor<Path>() {
-                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attr) {
-                        if(path.compareTo(dir) != 0) {
-                            registerPath(dir);
-                        }
-                        return FileVisitResult.CONTINUE;
-                    }
-                });
-            } else {
-                registerPath(path);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
     }
 
     private void registerPath(Path path) {
         WatchKey key = null;
         try {
             logger.info("Registering new Archive {}", path.toFile().getName());
-            key = path.register(watcher, OVERFLOW, ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY);
+            if(Files.isDirectory(path)) {
+                key = path.register(watcher, OVERFLOW, ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY);
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }
         keys.put(key, path);
     }
 
-    private void publishFileSystemEvent(Path resolvedFilePath) {
+    private void publishFileSystemChange(Path resolvedFilePath) {
         logger.info("Send archive file to kafka consumer");
-        publishFileSystemChange(from(resolvedFilePath));
-    }
-
-    public void publishFileSystemChange(ArchiveMetaData archiveMetaData) {
-        logger.info("Preparing Message to send to kafka -- {}", archiveMetaData.getName());
-        ProducerRecord<String,String> record = null;
-        try {
-            record = new ProducerRecord<>(
-                    SYSTEM_CHANGE_TOPIC,
-                    new ObjectMapper().writeValueAsString(archiveMetaData));
-        } catch (JsonProcessingException e) {
-            e.printStackTrace();
-        }
-        kafkaProducer.send(record,(data,exception) -> {
-            logger.info("Message Sent to offset {}, for file {}", data.offset(),archiveMetaData.getName());
-        });
+        eventBus.sendAndForget(FILE_SYSTEM_EVENT_ADDRESS,resolvedFilePath.toFile().getName());
     }
 
     private ArchiveMetaData from(Path resolvedPath) {
