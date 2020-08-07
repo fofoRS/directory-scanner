@@ -15,7 +15,7 @@
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
-      <module name="file-system-scanner" target="1.8" />
+      <module name="file-system-scanner" target="14" />
     </bytecodeTargetLevel>
   </component>
 </project>
