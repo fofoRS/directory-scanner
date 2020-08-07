@@ -1,7 +1,5 @@
 package org.quarkus.reactive;
 
-import io.vertx.core.Vertx;
-import io.vertx.core.WorkerExecutor;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -18,19 +16,18 @@ import java.util.concurrent.TimeUnit;
 
 import static java.nio.file.StandardWatchEventKinds.*;
 
-public class FileSystemKafkaProducer {
+public class DirectoryEventProducer {
 
-    Logger logger = LoggerFactory.getLogger(FileSystemKafkaProducer.class);
+    Logger logger = LoggerFactory.getLogger(DirectoryEventProducer.class);
 
     static final String SYSTEM_CHANGE_TOPIC = "file.system.watcher.topic";
     static final Map<WatchKey, Path> keys = new HashMap<>();
-    static final String directory = "/Users/rodolfo/Documents/personal/training/learning/quarkus/quarkus-file-system-scanner/file-system-scanner/testDir";
 
     Properties producerConfig;
     KafkaProducer<String, String> kafkaProducer;
     WatchService watcher;
 
-    public FileSystemKafkaProducer() throws IOException {
+    public DirectoryEventProducer() throws IOException {
         producerConfig = new Properties();
         producerConfig.setProperty(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
         producerConfig.setProperty(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
@@ -48,7 +45,7 @@ public class FileSystemKafkaProducer {
         kafkaProducer = new KafkaProducer<String, String>(producerConfig);
     }
 
-    public void watch() {
+    public void watch(String path) {
         new Thread(() -> {
             logger.info("Watching dir...");
             try {
@@ -56,7 +53,7 @@ public class FileSystemKafkaProducer {
             } catch (IOException ioException) {
                 ioException.printStackTrace();
             }
-            registerPath(Paths.get(directory));
+            registerPath(Paths.get(path));
             for (; ;) {
                 logger.info("Iteration through key events");
                 WatchKey key = null;

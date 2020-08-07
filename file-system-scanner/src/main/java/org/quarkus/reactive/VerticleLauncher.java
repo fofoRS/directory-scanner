@@ -11,17 +11,17 @@ import javax.enterprise.event.Observes;
 import javax.inject.Inject;
 import java.util.concurrent.TimeUnit;
 
+import static org.quarkus.reactive.WorkerVerticle.FILE_SYSTEM_EVENT_ADDRESS;
+
 @ApplicationScoped
-public class VerticalsDeployer {
+public class VerticleLauncher {
 
-    Logger logger = LoggerFactory.getLogger(VerticalsDeployer.class);
+    Logger logger = LoggerFactory.getLogger(VerticleLauncher.class);
 
-    @Inject
-    Vertx vertx;
-    @Inject
-    DispatcherVerticle dispatcherVerticle;
+    @Inject Vertx vertx;
+    @Inject WorkerVerticle workerVerticle;
 
-    public void onStart(@Observes StartupEvent event,WorkerVerticle workerVerticle) {
+    public void launch(String targetDirectory) {
         DeploymentOptions options =
                 new DeploymentOptions()
                         .setWorkerPoolName("file.system.watcher.pool.worker")
@@ -34,7 +34,7 @@ public class VerticalsDeployer {
                 .subscribe()
                 .with(e -> {
                     if(!e.isEmpty()) {
-                        dispatcherVerticle.dispatchFileSystemWatcher();
+                        vertx.eventBus().sendAndForget(FILE_SYSTEM_EVENT_ADDRESS, targetDirectory);
                     }
                 });
     }

@@ -11,11 +11,13 @@ public class WorkerVerticle extends AbstractVerticle {
 
     @Override
     public void start() throws Exception {
-        FileSystemKafkaProducer fileSystemKafkaProducer = new FileSystemKafkaProducer();
+        // This can be implemented as Vertx Service.
+        DirectoryEventProducer directoryEventProducer = new DirectoryEventProducer();
         vertx
                 .eventBus()
                 .consumer(FILE_SYSTEM_EVENT_ADDRESS,message -> {
-                    fileSystemKafkaProducer.watch();
+                    String payload = (String)message.body();
+                    directoryEventProducer.watch(payload);
                 });
     }
 }
